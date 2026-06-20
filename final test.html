@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Geode Checker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: "Times New Roman", Times, serif;
+            padding: 50px 20px;
+            max-width: 500px;
+            margin: 0 auto 0 40px;
+            font-size: 18px;
+        }
+        h1 {
+            font-size: 32px;
+            margin-bottom: 5px;
+            text-align: left;
+            font-weight: normal;
+        }
+        .subtitle-note {
+            font-size: 15px;
+            color: #888888;
+            text-align: left;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .input-box {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+        }
+        input {
+            background: #111111;
+            color: #ffffff;
+            border: 1px solid #333333;
+            padding: 10px;
+            width: 100%;
+            font-size: 16px;
+            font-family: "Times New Roman", Times, serif;
+            box-sizing: border-box;
+        }
+        button {
+            background: #ffffff;
+            color: #000000;
+            border: none;
+            padding: 14px;
+            width: 100%;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 18px;
+            font-family: "Times New Roman", Times, serif;
+            margin-top: 10px;
+            text-align: left;
+            padding-left: 15px;
+        }
+        #result {
+            margin-top: 25px;
+            padding: 10px 0;
+            font-size: 18px;
+            text-align: left;
+        }
+        .info-box {
+            background: #111111;
+            border: 1px solid #444444;
+            padding: 15px;
+            margin-top: 12px;
+            font-size: 16px;
+            font-family: "Times New Roman", Times, serif;
+            text-align: left;
+            line-height: 1.5;
+        }
+        .logo-frame {
+            width: 60px;
+            height: 60px;
+            border: 1px solid #444444;
+            background: #000000;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo-frame img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .dep-item {
+            font-size: 14px;
+            color: #aaaaaa;
+            margin-left: 10px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Geode Checker</h1>
+    
+    <div class="subtitle-note">
+        Select a Geometry Dash mod file (.geode) to extract its metadata, developer info, and inner dependencies.
+    </div>
+    
+    <div class="input-box">
+        <label>Mod File (.geode)</label>
+        <input type="file" id="geodeFile" accept=".geode">
+    </div>
+    
+    <button onclick="checkGeode()">Check Mod</button>
+    
+    <div id="result"></div>
+
+    <script>
+        async function checkGeode() {
+            const file = document.getElementById('geodeFile').files[0];
+            const out = document.getElementById('result');
+
+            if (!file) {
+                out.style.color = "#ff4444";
+                out.innerText = "Select a file.";
+                return;
+            }
+
+            if (!file.name.endsWith('.geode')) {
+                out.style.color = "#ff4444";
+                out.innerText = "Invalid extension. Must be a .geode file.";
+                return;
+            }
+
+            out.innerHTML = "Processing...";
+            out.style.color = "#ffffff";
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                JSZip.loadAsync(event.target.result).then(async function(zip) {
+                    
+                    // Buscar el manifiesto mod.json
+                    const jsonFile = zip.file("mod.json");
+                    if (!jsonFile) {
+                        throw new Error("Missing 'mod.json' inside the package.");
+                    }
+
+                    const jsonText = await jsonFile.async("string");
+                    const data = JSON.parse(jsonText);
+
+                    // Buscar imagen para el logo (.png)
+                    let logoUrl = "";
+                    const images = Object.keys(zip.files).filter(name => name.toLowerCase().endsWith('.png'));
+                    if (images.length > 0) {
+                        // Intentar buscar uno que se llame logo o usar el primero disponible
+                        let bestLogo = images.find(name => name.includes('logo')) || images[0];
+                        const logoBlob = await zip.file(bestLogo).async("blob");
+                        logoUrl = URL.createObjectURL(logoBlob);
+                    }
+
+                    // Limpiar salida
+                    out.innerHTML = "";
+
+                    // Crear contenedor principal de la información (estilo .copied-box)
+                    let box = document.createElement('div');
+                    box.className = 'info-box';
+
+                    // Si hay logo, añadirlo
+                    if (logoUrl) {
+                        let frame = document.createElement('div');
+                        frame.className = 'logo-frame';
+                        let img = document.createElement('img');
+                        img.src = logoUrl;
+                        frame.appendChild(img);
+                        box.appendChild(frame);
+                    }
+
+                    // Insertar campos de texto plano ordenados
+                    box.innerHTML += `<strong>Name:</strong> ${data.name || "N/A"}<br>`;
+                    box.innerHTML += `<strong>Version:</strong> v${data.version || "0.0.0"}<br>`;
+                    box.innerHTML += `<strong>Developer:</strong> ${data.developer || data.authors || "Unknown"}<br>`;
+                    box.innerHTML += `<strong>ID:</strong> ${data.id || "N/A"}<br>`;
+                    box.innerHTML += `<strong>Geode Target:</strong> ${data.geode || "N/A"}<br>`;
+                    box.innerHTML += `<strong>Description:</strong> ${data.description || "No description provided."}<br><br>`;
+
+                    // Agregar dependencias si existen
+                    box.innerHTML += `<strong>Dependencies:</strong>`;
+                    const deps = data.dependencies || [];
+                    if (deps.length === 0) {
+                        box.innerHTML += `<span class="dep-item">None</span>`;
+                    } else {
+                        deps.forEach(dep => {
+                            let depId = typeof dep === 'object' ? dep.id : dep;
+                            let depVer = typeof dep === 'object' ? (dep.version || "any") : "required";
+                            box.innerHTML += `<span class="dep-item">- ${depId} (${depVer})</span>`;
+                        });
+                    }
+
+                    out.appendChild(box);
+
+                }).catch(err => {
+                    out.style.color = "#ff4444";
+                    out.innerText = "Error: " + err.message;
+                });
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+    </script>
+
+</body>
+</html>
